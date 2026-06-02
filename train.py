@@ -217,7 +217,7 @@ def main():
     param_dist = {
         "log": [
             FunctionTransformer(np.log1p),
-            FunctionTransformer(lambda x: x),
+            FunctionTransformer(),
         ],
         "scaler": [StandardScaler(), RobustScaler()],
         "pca__n_components": [6, 8, 10, 12, 14, 16, 18],
