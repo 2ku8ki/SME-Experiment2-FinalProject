@@ -25,7 +25,7 @@ from sklearn.decomposition import PCA
 from sklearn.kernel_ridge import KernelRidge
 from sklearn.linear_model import Ridge
 from sklearn.metrics import make_scorer
-from sklearn.model_selection import KFold, RandomizedSearchCV, cross_val_score
+from sklearn.model_selection import GridSearchCV, KFold, RandomizedSearchCV, cross_val_score
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, RobustScaler, StandardScaler
@@ -130,6 +130,23 @@ def evaluate_model(name, model, X, Y, cv):
     return p90
 
 
+def tune_and_evaluate_baseline(name, estimator, param_grid, X, Y, cv):
+    scorer = make_scorer(p90_position_error, greater_is_better=False)
+    search = GridSearchCV(
+        estimator=estimator,
+        param_grid=param_grid,
+        scoring=scorer,
+        cv=cv,
+        n_jobs=-1,
+        refit=True,
+    )
+    search.fit(X, Y)
+    best_p90 = -float(search.best_score_)
+    print(f"{name:14s}: {best_p90:8.4f} m")
+    print(f"  best params: {search.best_params_}")
+    return best_p90
+
+
 def main():
     data_path = find_data_path()
     X, Y, bs_positions = load_dataset(data_path)
@@ -151,23 +168,38 @@ def main():
         cv,
     )
 
-    baseline_results["KNN"] = evaluate_model(
-        "KNN",
-        Pipeline([
-            ("scaler", StandardScaler()),
-            ("knn", KNeighborsRegressor(n_neighbors=5, weights="distance")),
-        ]),
+    knn_matched = Pipeline([
+        ("log", FunctionTransformer(np.log1p)),
+        ("scaler", StandardScaler()),
+        ("pca", PCA(n_components=18, whiten=True)),
+        ("knn", KNeighborsRegressor()),
+    ])
+
+    baseline_results["KNN-matched"] = tune_and_evaluate_baseline(
+        "KNN-matched",
+        knn_matched,
+        {
+            "knn__n_neighbors": [3, 5, 7, 9, 11, 15, 21],
+            "knn__weights": ["uniform", "distance"],
+        },
         X,
         Y,
         cv,
     )
 
-    baseline_results["Ridge"] = evaluate_model(
-        "Ridge",
-        Pipeline([
-            ("scaler", StandardScaler()),
-            ("ridge", Ridge(alpha=1.0)),
-        ]),
+    ridge_matched = Pipeline([
+        ("log", FunctionTransformer(np.log1p)),
+        ("scaler", StandardScaler()),
+        ("pca", PCA(n_components=18, whiten=True)),
+        ("ridge", Ridge()),
+    ])
+
+    baseline_results["Ridge-matched"] = tune_and_evaluate_baseline(
+        "Ridge-matched",
+        ridge_matched,
+        {
+            "ridge__alpha": [0.001, 0.01, 0.1, 1.0, 10.0, 100.0],
+        },
         X,
         Y,
         cv,
